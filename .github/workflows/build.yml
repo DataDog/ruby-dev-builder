@@ -47,6 +47,8 @@ jobs:
     needs: [prepare]
     if: needs.prepare.outputs.should_build == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     outputs:
       tag: ${{ steps.tag.outputs.tag }}
     steps:
@@ -207,6 +209,8 @@ jobs:
   publish:
     name: Publish Release
     needs: [release, build]
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
     steps:
     - name: Publish Release
