@@ -4,7 +4,7 @@ permissions:
 on:
   workflow_dispatch:
     inputs:
-      skip-slow:
+      skip_slow:
         type: boolean
         default: false
   push:
@@ -167,7 +167,7 @@ jobs:
   # Same as build above, but with a slightly different matrix (and a few steps based on the matrix). Please keep both copies in-sync!
   build-slow:
     needs: [prepare, release]
-    if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.skip-slow == 'false' }}
+    if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.skip_slow == 'false' }}
     strategy:
       fail-fast: false
       # This matrix should be kept in sync with reuse-slow!
@@ -289,7 +289,7 @@ jobs:
 
   reuse-slow:
     needs: [prepare, release]
-    if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.skip-slow == 'true' }}
+    if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.skip_slow == 'true' }}
     strategy:
       fail-fast: false
       # This matrix should be kept in sync with build-slow!
@@ -322,7 +322,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Reuse slow notice
-      if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.skip-slow == 'true' }}
+      if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.skip_slow == 'true' }}
       id: notice
       run: echo "reuse_slow_notice=\\nSkipped building and reused builds from ${{ needs.prepare.outputs.previous_release }} for debug and asan rubies" >> $GITHUB_OUTPUT
     - name: Publish Release
