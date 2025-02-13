@@ -312,7 +312,7 @@ jobs:
           platform=${platform/%-arm/-arm64}
           echo "platform=$platform" >> $GITHUB_OUTPUT
       - name: Download binaries from previous release
-        run: gh release download ${{ needs.prepare.outputs.previous_release }} --pattern "ruby-${{ matrix.name }}-${{ steps.platform.outputs.platform }}.tar.gz"
+        run: gh release download "${{ needs.prepare.outputs.previous_release }}" --pattern "ruby-${{ matrix.name }}-${{ steps.platform.outputs.platform }}.tar.gz"
       - name: Re-upload Binaries
         run: gh release upload "${{ needs.release.outputs.tag }}" "ruby-${{ matrix.name }}-${{ steps.platform.outputs.platform }}.tar.gz"
 
@@ -321,11 +321,15 @@ jobs:
     needs: [release, build, build-slow, reuse-slow]
     runs-on: ubuntu-latest
     steps:
+    - name: Reuse slow notice
+      if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.skip-slow == 'true' }}
+      id: notice
+      run: echo "reuse_slow_notice=\\nSkipped building and reused builds from ${{ needs.prepare.outputs.previous_release }} for debug and asan rubies" >> $GITHUB_OUTPUT
     - name: Publish Release
       env:
         GH_TOKEN: ${{ github.token }}
         GH_REPO: ${{ github.repository }}
-      run: gh release edit "${{ needs.release.outputs.tag }}" --draft=false
+      run: gh release edit "${{ needs.release.outputs.tag }}${{ steps.notice.outputs.reuse_slow_notice }}" --draft=false
     - uses: eregon/keep-last-n-releases@v1
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
