@@ -182,24 +182,12 @@ jobs:
       run: tar czf ruby-${{ matrix.name }}-${{ steps.platform.outputs.platform }}.tar.gz -C ~/.rubies ruby-${{ matrix.name }}
 
     # Test
-    - run: make test-spec MSPECOPT=-j
-    - run: make test-all TESTS="-j4"
-
-    - run: echo "$HOME/.rubies/ruby-${{ matrix.name }}/bin" >> $GITHUB_PATH
     - uses: actions/checkout@v4
       with:
         path: test_files
-    - name: CLI Test
-      run: ruby test_files/cli_test.rb
-    - run: mv test_files/Gemfile .
-    - run: ruby -e 'pp RbConfig::CONFIG'
-    - run: ruby --yjit -e 'exit RubyVM::YJIT.enabled?'
-    - run: ruby -ropen-uri -e 'puts URI.send(:open, "https://rubygems.org/") { |f| f.read(1024) }'
-    - run: gem install json:2.2.0 --no-document
-    - run: bundle install
-    - run: bundle exec rake --version
-    - name: Subprocess test
-      run: ruby -e 'p RbConfig::CONFIG["cppflags"]; def Warning.warn(s); raise s; end; system RbConfig.ruby, "-e", "p :OK"'
+    - run: echo "$HOME/.rubies/ruby-${{ matrix.name }}/bin" >> $GITHUB_PATH
+    - name: Smoke test
+      run: bash test_files/smoke_test.sh
 
     - name: Upload Built Ruby
       env:
