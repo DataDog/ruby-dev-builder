@@ -20,6 +20,8 @@ jobs:
       commit: ${{ steps.latest_commit.outputs.commit }}
       should_build: ${{ steps.check_commit.outputs.should_build }}
       previous_release: ${{ steps.check_commit.outputs.previous_release }}
+      build_matrix: ${{ steps.matrix.outputs.build_matrix }}
+      reuse_matrix: ${{ steps.matrix.outputs.reuse_matrix }}
     steps:
     - name: Clone ruby
       uses: actions/checkout@v4
@@ -46,6 +48,37 @@ jobs:
 
           core.setOutput('should_build', latestReleaseCommit !== latestDevCommit)
           core.setOutput('previous_release', release.tag_name)
+    - name: Compute build and reuse matrix
+      uses: actions/github-script@v7
+      id: matrix
+      with:
+        script: |
+          let build_matrix, reuse_matrix
+          const osList = ['ubuntu-20.04', 'ubuntu-22.04', 'ubuntu-24.04', 'ubuntu-22.04-arm', 'ubuntu-24.04-arm', 'macos-13', 'macos-14']
+          const shouldDoFullBuild = (github.event_name !== 'workflow_dispatch' || github.event.inputs.skip-slow === 'false')
+          if (shouldDoFullBuild) {
+            build_matrix = {
+              os: osList,
+              name: ['head', 'debug'],
+              include: [{ os: 'ubuntu-24.04', name: 'asan' }]
+            }
+            reuse_matrix = {}
+          } else {
+            build_matrix = {
+              os: osList,
+              name: ['head']
+            }
+            reuse_matrix = {
+              os: osList,
+              name: ['debug'],
+              include: [
+                { os: 'ubuntu-24.04', name: 'asan' }
+              ]
+            }
+          }
+          console.log(`build_matrix: ${build_matrix}, reuse_matrix: ${reuse_matrix}`)
+          core.setOutput('build_matrix', JSON.stringify(build_matrix))
+          core.setOutput('reuse_matrix', JSON.stringify(reuse_matrix))
 
   release:
     name: Create GitHub Release
