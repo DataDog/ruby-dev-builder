@@ -2,7 +2,7 @@
 
 # Expected to be run from ruby build directory, and assumes ruby-dev-builder repo is checked out at test_files/ folder
 
-set -euo pipefail
+set -euxo pipefail
 
 make test-spec MSPECOPT=-j
 make test-all TESTS="-j4"
