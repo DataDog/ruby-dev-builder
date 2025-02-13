@@ -261,7 +261,7 @@ jobs:
       - name: Re-upload Binaries
         run: gh release upload "${{ needs.release.outputs.tag }}" "ruby-${{ matrix.name }}-${{ steps.platform.outputs.platform }}.tar.gz"
         if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.skip_slow == 'true' }}
-      - name: Do nothing
+      - name: (Empty step for when reuse is not applied)
         run: echo "Not reusing binaries. This step is a no-op." # We can't skip the whole job as publish depends on it, but we skip the uploading
         if: ${{ !(github.event_name == 'workflow_dispatch' && github.event.inputs.skip_slow == 'true') }}
 
