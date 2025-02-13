@@ -55,8 +55,8 @@ jobs:
         script: |
           let build_matrix, reuse_matrix
           const osList = ['ubuntu-20.04', 'ubuntu-22.04', 'ubuntu-24.04', 'ubuntu-22.04-arm', 'ubuntu-24.04-arm', 'macos-13', 'macos-14']
-          const shouldDoFullBuild = (github.event_name !== 'workflow_dispatch' || github.event.inputs.skip_slow === 'false')
-          if (shouldDoFullBuild) {
+          const skipSlow = "${{ github.event_name == 'workflow_dispatch' && github.event.inputs.skip_slow == 'true' }}"
+          if (skipSlow === 'false') {
             build_matrix = JSON.stringify({
               os: osList,
               name: ['head', 'debug'],
@@ -76,7 +76,6 @@ jobs:
               ]
             })
           }
-          console.log(`event_name: ${github.event_name}, skip_slow: ${github.event.inputs.skip_slow}, comparison: ${github.event.inputs.skip_slow === 'false'}, shouldDoFullBuild: ${shouldDoFullBuild}`)
           console.log(`build_matrix: ${build_matrix}, reuse_matrix: ${reuse_matrix}`)
           core.setOutput('build_matrix', build_matrix)
           core.setOutput('reuse_matrix', reuse_matrix)
