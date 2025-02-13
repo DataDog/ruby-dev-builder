@@ -3,6 +3,10 @@ permissions:
   contents: write
 on:
   workflow_dispatch:
+    inputs:
+      skip-slow:
+        type: boolean
+        default: false
   push:
     tags:
     - '*'
@@ -13,8 +17,9 @@ jobs:
     name: Check if the latest ruby commit is already built
     runs-on: ubuntu-latest
     outputs:
-      should_build: ${{ steps.check_commit.outputs.result }}
       commit: ${{ steps.latest_commit.outputs.commit }}
+      should_build: ${{ steps.check_commit.outputs.should_build }}
+      previous_release: ${{ steps.check_commit.outputs.previous_release }}
     steps:
     - name: Clone ruby
       uses: actions/checkout@v4
@@ -37,12 +42,9 @@ jobs:
           const latestReleaseCommit = release.body.split('@')[1]
           console.log(`Latest release commit: ${latestReleaseCommit}`)
           console.log(`Latest ruby commit: ${latestDevCommit}`)
-          if (latestReleaseCommit === latestDevCommit) {
-            return 'false'
-          } else {
-            return 'true'
-          }
-        result-encoding: string
+
+          core.setOutput('should_build', latestReleaseCommit !== latestDevCommit)
+          core.setOutput('previous_release', release.tag_name);
 
   release:
     name: Create GitHub Release
@@ -161,11 +163,13 @@ jobs:
         GH_REPO: ${{ github.repository }}
       run: gh release upload "${{ needs.release.outputs.tag }}" "ruby-${{ matrix.name }}-${{ steps.platform.outputs.platform }}.tar.gz"
 
-  # Same as build above, but with a slightly different matrix. Please keep both copies in-sync!
+  # Same as build above, but with a slightly different matrix (and a few steps based on the matrix). Please keep both copies in-sync!
   build-slow:
     needs: [prepare, release]
+    if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.skip-slow == 'false' }}
     strategy:
       fail-fast: false
+      # This matrix should be kept in sync with reuse-slow!
       matrix:
         os: [ ubuntu-20.04, ubuntu-22.04, ubuntu-24.04, ubuntu-22.04-arm, ubuntu-24.04-arm, macos-13, macos-14 ]
         name: [ debug ]
@@ -281,6 +285,24 @@ jobs:
         GH_TOKEN: ${{ github.token }}
         GH_REPO: ${{ github.repository }}
       run: gh release upload "${{ needs.release.outputs.tag }}" "ruby-${{ matrix.name }}-${{ steps.platform.outputs.platform }}.tar.gz"
+
+  reuse-slow:
+    needs: [prepare, release]
+    if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.skip-slow == 'true' }}
+    strategy:
+      fail-fast: false
+      # This matrix should be kept in sync with build-slow!
+      matrix:
+        os: [ ubuntu-20.04, ubuntu-22.04, ubuntu-24.04, ubuntu-22.04-arm, ubuntu-24.04-arm, macos-13, macos-14 ]
+        name: [ debug ]
+        include:
+          - { os: ubuntu-24.04, name: asan }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Download binaries from previous release
+        run: gh release download ${{ needs.prepare.outputs.previous_release }} --pattern "ruby-${{ matrix.name }}-${{ steps.platform.outputs.platform }}.tar.gz"
+      - name: Re-upload Binaries
+        run: gh release upload "${{ needs.release.outputs.tag }}" "ruby-${{ matrix.name }}-${{ steps.platform.outputs.platform }}.tar.gz"
 
   publish:
     name: Publish Release
