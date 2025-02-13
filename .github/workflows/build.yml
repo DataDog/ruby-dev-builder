@@ -1,4 +1,6 @@
 name: CRuby Dev Builds
+permissions:
+  contents: write
 on:
   workflow_dispatch:
   push:
@@ -47,8 +49,6 @@ jobs:
     needs: [prepare]
     if: needs.prepare.outputs.should_build == 'true'
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     outputs:
       tag: ${{ steps.tag.outputs.tag }}
     steps:
@@ -285,8 +285,6 @@ jobs:
   publish:
     name: Publish Release
     needs: [release, build, build-slow]
-    permissions:
-      contents: write
     runs-on: ubuntu-latest
     steps:
     - name: Publish Release
