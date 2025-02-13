@@ -39,12 +39,13 @@ jobs:
           const latestDevCommit = "${{ steps.latest_commit.outputs.commit }}"
           const { owner, repo } = context.repo
           let { data: release } = await github.rest.repos.getLatestRelease({ owner, repo })
-          const latestReleaseCommit = release.body.split('@')[1]
+          const firstLine = release.body.split('\n')[0]
+          const latestReleaseCommit = firstLine.split('@')[1]
           console.log(`Latest release commit: ${latestReleaseCommit}`)
           console.log(`Latest ruby commit: ${latestDevCommit}`)
 
           core.setOutput('should_build', latestReleaseCommit !== latestDevCommit)
-          core.setOutput('previous_release', release.tag_name);
+          core.setOutput('previous_release', release.tag_name)
 
   release:
     name: Create GitHub Release
