@@ -195,9 +195,129 @@ jobs:
         GH_REPO: ${{ github.repository }}
       run: gh release upload "${{ needs.release.outputs.tag }}" "ruby-${{ matrix.name }}-${{ steps.platform.outputs.platform }}.tar.gz"
 
+  build-slow:
+    needs: [prepare, release]
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-20.04, ubuntu-22.04, ubuntu-24.04, ubuntu-22.04-arm, ubuntu-24.04-arm, macos-13, macos-14 ]
+        name: [ head, debug ]
+        include:
+          - { os: ubuntu-24.04, name: asan }
+    runs-on: ${{ matrix.os }}
+    steps:
+    - name: Clone ruby
+      uses: actions/checkout@v4
+      with:
+        repository: ruby/ruby
+        ref: ${{ needs.prepare.outputs.commit }}
+    - name: Clone ruby-dev-builder
+      uses: actions/checkout@v4
+      with:
+        path: ruby-dev-builder
+
+    - name: Set platform
+      id: platform
+      run: |
+        platform=${{ matrix.os }}
+        platform=${platform/macos-13/macos-latest}
+        platform=${platform/macos-14/macos-13-arm64}
+        platform=${platform/%-arm/-arm64}
+        echo "platform=$platform" >> $GITHUB_OUTPUT
+
+    # Build
+    - name: apt-get update on Ubuntu
+      run: sudo apt-get update
+      if: startsWith(matrix.os, 'ubuntu')
+    - run: sudo apt-get install -y --no-install-recommends ruby bison libyaml-dev libgdbm-dev libreadline-dev libncurses5-dev
+      if: startsWith(matrix.os, 'ubuntu')
+    - run: brew install autoconf automake bison
+      if: startsWith(matrix.os, 'macos')
+    - run: echo "PATH=/usr/local/opt/bison/bin:$PATH" >> $GITHUB_ENV
+      if: startsWith(matrix.os, 'macos')
+    - name: Disable Firewall # Needed for TestSocket#test_udp_server in test-all
+      if: startsWith(matrix.os, 'macos')
+      run: |
+        sudo /usr/libexec/ApplicationFirewall/socketfilterfw --setglobalstate off
+        sudo /usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate
+
+    # Check
+    - name: Setup BASERUBY
+      uses: ruby/setup-ruby@master
+      with:
+        ruby-version: 3.2
+
+    # ENABLE_PATH_CHECK=0: https://github.com/actions/virtual-environments/issues/267
+    - name: Set configure flags (head)
+      run: |
+        echo "cppflags=-DENABLE_PATH_CHECK=0" >> $GITHUB_ENV
+      if: matrix.name == 'head'
+    - name: Set configure flags (debug)
+      run: |
+        echo "cppflags=-DENABLE_PATH_CHECK=0 -DRUBY_DEBUG=1" >> $GITHUB_ENV
+        echo "optflags=-O3 -fno-inline" >> $GITHUB_ENV
+      if: matrix.name == 'debug'
+    - name: Build dependencies and set configure flags (asan)
+      run: |
+        set -ex
+        # We only test ASAN with Clang. The version of Clang needs to be > 18, which the version in
+        # Ubuntu 24.04's repo is
+        sudo apt-get install -y clang
+
+        # ASAN builds need to compile (some of) their own dependencies with ASAN enabled, so that it can
+        # catch memory errors caused by passing invalid parameters into other libraries.
+        ASAN_LIB_PREFIX="$HOME/.rubies/ruby-${{ matrix.name }}"
+        ./ruby-dev-builder/asan_libs.rb \
+          --prefix="$ASAN_LIB_PREFIX" \
+          --cc=clang \
+          --cflags="-fsanitize=address -fno-omit-frame-pointer -ggdb3 -O3" \
+          --ldflags="-Wl,-rpath=$ASAN_LIB_PREFIX/lib" \
+          --makeopts="-j4"
+
+        # Set Ruby configure flags
+        # Clang > 17 does not work with M:N threading, so we disable it: https://bugs.ruby-lang.org/issues/20243
+        echo "cppflags=-DENABLE_PATH_CHECK=0 -DRUBY_DEBUG=1 -DVM_CHECK_MODE=1 -DUSE_MN_THREADS=0" >> $GITHUB_ENV
+        echo "optflags=-O3 -fno-omit-frame-pointer" >> $GITHUB_ENV
+        echo "debugflags=-fsanitize=address -ggdb3" >> $GITHUB_ENV
+        echo "CC=clang" >> $GITHUB_ENV
+        # Make sure we link against the ASAN libs we built
+        echo "cflags=-I$ASAN_LIB_PREFIX/include" >> $GITHUB_ENV
+        echo "LDFLAGS=-L$ASAN_LIB_PREFIX/lib -Wl,-rpath=$ASAN_LIB_PREFIX/lib" >> $GITHUB_ENV
+        # Make the test timeouts more generous too (ASAN is slower)
+        echo "RUBY_TEST_TIMEOUT_SCALE=5" >> $GITHUB_ENV
+        echo "SYNTAX_SUGGEST_TIMEOUT=600" >> $GITHUB_ENV
+      if: matrix.name == 'asan'
+
+    # Build
+    - run: mkdir -p ~/.rubies
+    - run: ./autogen.sh
+    - run: ./configure --prefix=$HOME/.rubies/ruby-${{ matrix.name }} --enable-shared --disable-install-doc --enable-yjit
+      if: startsWith(matrix.os, 'ubuntu')
+    - run: ./configure --prefix=$HOME/.rubies/ruby-${{ matrix.name }} --enable-shared --disable-install-doc --enable-yjit --with-openssl-dir=$(brew --prefix openssl@3) --with-readline-dir=$(brew --prefix readline)
+      if: startsWith(matrix.os, 'macos')
+    - run: make -j4
+    - run: make install
+
+    - name: Create archive
+      run: tar czf ruby-${{ matrix.name }}-${{ steps.platform.outputs.platform }}.tar.gz -C ~/.rubies ruby-${{ matrix.name }}
+
+    # Test
+    - uses: actions/checkout@v4
+      with:
+        path: test_files
+    - run: echo "$HOME/.rubies/ruby-${{ matrix.name }}/bin" >> $GITHUB_PATH
+    - name: Smoke test
+      run: bash test_files/smoke_test.sh
+
+    - name: Upload Built Ruby
+      env:
+        GH_TOKEN: ${{ github.token }}
+        GH_REPO: ${{ github.repository }}
+      run: gh release upload "${{ needs.release.outputs.tag }}" "ruby-${{ matrix.name }}-${{ steps.platform.outputs.platform }}.tar.gz"
+
   publish:
     name: Publish Release
-    needs: [release, build]
+    needs: [release, build, build-slow]
     permissions:
       contents: write
     runs-on: ubuntu-latest
