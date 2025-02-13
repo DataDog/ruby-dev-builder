@@ -53,8 +53,8 @@ jobs:
       id: matrix
       with:
         script: |
-          let build_matrix, reuse_matrix
           const osList = ['ubuntu-20.04', 'ubuntu-22.04', 'ubuntu-24.04', 'ubuntu-22.04-arm', 'ubuntu-24.04-arm', 'macos-13', 'macos-14']
+          let build_matrix
           const skipSlow = "${{ github.event_name == 'workflow_dispatch' && github.event.inputs.skip_slow == 'true' }}"
           if (skipSlow === 'false') {
             build_matrix = JSON.stringify({
@@ -62,20 +62,19 @@ jobs:
               name: ['head', 'debug'],
               include: [{ os: 'ubuntu-24.04', name: 'asan' }]
             })
-            reuse_matrix = JSON.stringify({})
           } else {
             build_matrix = JSON.stringify({
               os: osList,
               name: ['head']
             })
-            reuse_matrix = JSON.stringify({
-              os: osList,
-              name: ['debug'],
-              include: [
-                { os: 'ubuntu-24.04', name: 'asan' }
-              ]
-            })
           }
+          let reuse_matrix = JSON.stringify({
+            os: osList,
+            name: ['debug'],
+            include: [
+              { os: 'ubuntu-24.04', name: 'asan' }
+            ]
+          })
           console.log(`build_matrix: ${build_matrix}, reuse_matrix: ${reuse_matrix}`)
           core.setOutput('build_matrix', build_matrix)
           core.setOutput('reuse_matrix', reuse_matrix)
