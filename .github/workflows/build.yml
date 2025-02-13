@@ -75,15 +75,16 @@ jobs:
         body="ruby/ruby@${{ needs.prepare.outputs.commit }}"
         gh release create --draft "$tag" --title "$tag" --notes "$body"
 
+  # Same as build-slow below, but with a slightly different matrix;
+  # only conditional steps based on the matrix with "if: matrix.name ==" are different.
+  # Please keep both copies in-sync!
   build:
     needs: [prepare, release]
     strategy:
       fail-fast: false
       matrix:
         os: [ ubuntu-20.04, ubuntu-22.04, ubuntu-24.04, ubuntu-22.04-arm, ubuntu-24.04-arm, macos-13, macos-14 ]
-        name: [ head, debug ]
-        include:
-          - { os: ubuntu-24.04, name: asan }
+        name: [ head ]
     runs-on: ${{ matrix.os }}
     steps:
     - name: Clone ruby
@@ -132,41 +133,6 @@ jobs:
       run: |
         echo "cppflags=-DENABLE_PATH_CHECK=0" >> $GITHUB_ENV
       if: matrix.name == 'head'
-    - name: Set configure flags (debug)
-      run: |
-        echo "cppflags=-DENABLE_PATH_CHECK=0 -DRUBY_DEBUG=1" >> $GITHUB_ENV
-        echo "optflags=-O3 -fno-inline" >> $GITHUB_ENV
-      if: matrix.name == 'debug'
-    - name: Build dependencies and set configure flags (asan)
-      run: |
-        set -ex
-        # We only test ASAN with Clang. The version of Clang needs to be > 18, which the version in
-        # Ubuntu 24.04's repo is
-        sudo apt-get install -y clang
-
-        # ASAN builds need to compile (some of) their own dependencies with ASAN enabled, so that it can
-        # catch memory errors caused by passing invalid parameters into other libraries.
-        ASAN_LIB_PREFIX="$HOME/.rubies/ruby-${{ matrix.name }}"
-        ./ruby-dev-builder/asan_libs.rb \
-          --prefix="$ASAN_LIB_PREFIX" \
-          --cc=clang \
-          --cflags="-fsanitize=address -fno-omit-frame-pointer -ggdb3 -O3" \
-          --ldflags="-Wl,-rpath=$ASAN_LIB_PREFIX/lib" \
-          --makeopts="-j4"
-
-        # Set Ruby configure flags
-        # Clang > 17 does not work with M:N threading, so we disable it: https://bugs.ruby-lang.org/issues/20243
-        echo "cppflags=-DENABLE_PATH_CHECK=0 -DRUBY_DEBUG=1 -DVM_CHECK_MODE=1 -DUSE_MN_THREADS=0" >> $GITHUB_ENV
-        echo "optflags=-O3 -fno-omit-frame-pointer" >> $GITHUB_ENV
-        echo "debugflags=-fsanitize=address -ggdb3" >> $GITHUB_ENV
-        echo "CC=clang" >> $GITHUB_ENV
-        # Make sure we link against the ASAN libs we built
-        echo "cflags=-I$ASAN_LIB_PREFIX/include" >> $GITHUB_ENV
-        echo "LDFLAGS=-L$ASAN_LIB_PREFIX/lib -Wl,-rpath=$ASAN_LIB_PREFIX/lib" >> $GITHUB_ENV
-        # Make the test timeouts more generous too (ASAN is slower)
-        echo "RUBY_TEST_TIMEOUT_SCALE=5" >> $GITHUB_ENV
-        echo "SYNTAX_SUGGEST_TIMEOUT=600" >> $GITHUB_ENV
-      if: matrix.name == 'asan'
 
     # Build
     - run: mkdir -p ~/.rubies
@@ -195,13 +161,14 @@ jobs:
         GH_REPO: ${{ github.repository }}
       run: gh release upload "${{ needs.release.outputs.tag }}" "ruby-${{ matrix.name }}-${{ steps.platform.outputs.platform }}.tar.gz"
 
+  # Same as build above, but with a slightly different matrix. Please keep both copies in-sync!
   build-slow:
     needs: [prepare, release]
     strategy:
       fail-fast: false
       matrix:
         os: [ ubuntu-20.04, ubuntu-22.04, ubuntu-24.04, ubuntu-22.04-arm, ubuntu-24.04-arm, macos-13, macos-14 ]
-        name: [ head, debug ]
+        name: [ debug ]
         include:
           - { os: ubuntu-24.04, name: asan }
     runs-on: ${{ matrix.os }}
@@ -248,10 +215,10 @@ jobs:
         ruby-version: 3.2
 
     # ENABLE_PATH_CHECK=0: https://github.com/actions/virtual-environments/issues/267
-    - name: Set configure flags (head)
+    - name: Set configure flags (asan)
       run: |
         echo "cppflags=-DENABLE_PATH_CHECK=0" >> $GITHUB_ENV
-      if: matrix.name == 'head'
+      if: matrix.name == 'asan'
     - name: Set configure flags (debug)
       run: |
         echo "cppflags=-DENABLE_PATH_CHECK=0 -DRUBY_DEBUG=1" >> $GITHUB_ENV
