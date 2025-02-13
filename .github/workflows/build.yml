@@ -111,16 +111,11 @@ jobs:
         body="ruby/ruby@${{ needs.prepare.outputs.commit }}"
         gh release create --draft "$tag" --title "$tag" --notes "$body"
 
-  # Same as build-slow below, but with a slightly different matrix;
-  # only conditional steps based on the matrix with "if: matrix.name ==" are different.
-  # Please keep both copies in-sync!
   build:
     needs: [prepare, release]
     strategy:
       fail-fast: false
-      matrix:
-        os: [ ubuntu-20.04, ubuntu-22.04, ubuntu-24.04, ubuntu-22.04-arm, ubuntu-24.04-arm, macos-13, macos-14 ]
-        name: [ head ]
+      matrix: ${{ fromJson(needs.prepare.outputs.build_matrix) }}
     runs-on: ${{ matrix.os }}
     steps:
     - name: Clone ruby
@@ -169,94 +164,6 @@ jobs:
       run: |
         echo "cppflags=-DENABLE_PATH_CHECK=0" >> $GITHUB_ENV
       if: matrix.name == 'head'
-
-    # Build
-    - run: mkdir -p ~/.rubies
-    - run: ./autogen.sh
-    - run: ./configure --prefix=$HOME/.rubies/ruby-${{ matrix.name }} --enable-shared --disable-install-doc --enable-yjit
-      if: startsWith(matrix.os, 'ubuntu')
-    - run: ./configure --prefix=$HOME/.rubies/ruby-${{ matrix.name }} --enable-shared --disable-install-doc --enable-yjit --with-openssl-dir=$(brew --prefix openssl@3) --with-readline-dir=$(brew --prefix readline)
-      if: startsWith(matrix.os, 'macos')
-    - run: make -j4
-    - run: make install
-
-    - name: Create archive
-      run: tar czf ruby-${{ matrix.name }}-${{ steps.platform.outputs.platform }}.tar.gz -C ~/.rubies ruby-${{ matrix.name }}
-
-    # Test
-    - uses: actions/checkout@v4
-      with:
-        path: test_files
-    - run: echo "$HOME/.rubies/ruby-${{ matrix.name }}/bin" >> $GITHUB_PATH
-    - name: Smoke test
-      run: bash test_files/smoke_test.sh
-
-    - name: Upload Built Ruby
-      env:
-        GH_TOKEN: ${{ github.token }}
-        GH_REPO: ${{ github.repository }}
-      run: gh release upload "${{ needs.release.outputs.tag }}" "ruby-${{ matrix.name }}-${{ steps.platform.outputs.platform }}.tar.gz"
-
-  # Same as build above, but with a slightly different matrix (and a few steps based on the matrix). Please keep both copies in-sync!
-  build-slow:
-    needs: [prepare, release]
-    if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.skip_slow == 'false' }}
-    strategy:
-      fail-fast: false
-      # This matrix should be kept in sync with reuse-slow!
-      matrix:
-        os: [ ubuntu-20.04, ubuntu-22.04, ubuntu-24.04, ubuntu-22.04-arm, ubuntu-24.04-arm, macos-13, macos-14 ]
-        name: [ debug ]
-        include:
-          - { os: ubuntu-24.04, name: asan }
-    runs-on: ${{ matrix.os }}
-    steps:
-    - name: Clone ruby
-      uses: actions/checkout@v4
-      with:
-        repository: ruby/ruby
-        ref: ${{ needs.prepare.outputs.commit }}
-    - name: Clone ruby-dev-builder
-      uses: actions/checkout@v4
-      with:
-        path: ruby-dev-builder
-
-    - name: Set platform
-      id: platform
-      run: |
-        platform=${{ matrix.os }}
-        platform=${platform/macos-13/macos-latest}
-        platform=${platform/macos-14/macos-13-arm64}
-        platform=${platform/%-arm/-arm64}
-        echo "platform=$platform" >> $GITHUB_OUTPUT
-
-    # Build
-    - name: apt-get update on Ubuntu
-      run: sudo apt-get update
-      if: startsWith(matrix.os, 'ubuntu')
-    - run: sudo apt-get install -y --no-install-recommends ruby bison libyaml-dev libgdbm-dev libreadline-dev libncurses5-dev
-      if: startsWith(matrix.os, 'ubuntu')
-    - run: brew install autoconf automake bison
-      if: startsWith(matrix.os, 'macos')
-    - run: echo "PATH=/usr/local/opt/bison/bin:$PATH" >> $GITHUB_ENV
-      if: startsWith(matrix.os, 'macos')
-    - name: Disable Firewall # Needed for TestSocket#test_udp_server in test-all
-      if: startsWith(matrix.os, 'macos')
-      run: |
-        sudo /usr/libexec/ApplicationFirewall/socketfilterfw --setglobalstate off
-        sudo /usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate
-
-    # Check
-    - name: Setup BASERUBY
-      uses: ruby/setup-ruby@master
-      with:
-        ruby-version: 3.2
-
-    # ENABLE_PATH_CHECK=0: https://github.com/actions/virtual-environments/issues/267
-    - name: Set configure flags (asan)
-      run: |
-        echo "cppflags=-DENABLE_PATH_CHECK=0" >> $GITHUB_ENV
-      if: matrix.name == 'asan'
     - name: Set configure flags (debug)
       run: |
         echo "cppflags=-DENABLE_PATH_CHECK=0 -DRUBY_DEBUG=1" >> $GITHUB_ENV
@@ -307,12 +214,24 @@ jobs:
       run: tar czf ruby-${{ matrix.name }}-${{ steps.platform.outputs.platform }}.tar.gz -C ~/.rubies ruby-${{ matrix.name }}
 
     # Test
+    - run: make test-spec MSPECOPT=-j
+    - run: make test-all TESTS="-j4"
+
+    - run: echo "$HOME/.rubies/ruby-${{ matrix.name }}/bin" >> $GITHUB_PATH
     - uses: actions/checkout@v4
       with:
         path: test_files
-    - run: echo "$HOME/.rubies/ruby-${{ matrix.name }}/bin" >> $GITHUB_PATH
-    - name: Smoke test
-      run: bash test_files/smoke_test.sh
+    - name: CLI Test
+      run: ruby test_files/cli_test.rb
+    - run: mv test_files/Gemfile .
+    - run: ruby -e 'pp RbConfig::CONFIG'
+    - run: ruby --yjit -e 'exit RubyVM::YJIT.enabled?'
+    - run: ruby -ropen-uri -e 'puts URI.send(:open, "https://rubygems.org/") { |f| f.read(1024) }'
+    - run: gem install json:2.2.0 --no-document
+    - run: bundle install
+    - run: bundle exec rake --version
+    - name: Subprocess test
+      run: ruby -e 'p RbConfig::CONFIG["cppflags"]; def Warning.warn(s); raise s; end; system RbConfig.ruby, "-e", "p :OK"'
 
     - name: Upload Built Ruby
       env:
@@ -325,12 +244,7 @@ jobs:
     if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.skip_slow == 'true' }}
     strategy:
       fail-fast: false
-      # This matrix should be kept in sync with build-slow!
-      matrix:
-        os: [ ubuntu-20.04, ubuntu-22.04, ubuntu-24.04, ubuntu-22.04-arm, ubuntu-24.04-arm, macos-13, macos-14 ]
-        name: [ debug ]
-        include:
-          - { os: ubuntu-24.04, name: asan }
+      matrix: ${{ fromJson(needs.prepare.outputs.reuse_matrix) }}
     runs-on: ${{ matrix.os }}
     env:
       GH_TOKEN: ${{ github.token }}
@@ -351,7 +265,7 @@ jobs:
 
   publish:
     name: Publish Release
-    needs: [release, build, build-slow, reuse-slow]
+    needs: [release, build, reuse-slow]
     runs-on: ubuntu-latest
     steps:
     - name: Reuse slow notice
