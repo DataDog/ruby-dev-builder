@@ -17,8 +17,8 @@ jobs:
     name: Check if the latest ruby commit is already built
     runs-on: ubuntu-latest
     outputs:
-      commit: ${{ steps.latest_commit.outputs.commit }}
       should_build: ${{ steps.check_commit.outputs.should_build }}
+      commit: ${{ steps.latest_commit.outputs.commit }}
       previous_release: ${{ steps.check_commit.outputs.previous_release }}
       build_matrix: ${{ steps.matrix.outputs.build_matrix }}
       reuse_matrix: ${{ steps.matrix.outputs.reuse_matrix }}
