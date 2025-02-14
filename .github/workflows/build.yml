@@ -59,14 +59,14 @@ jobs:
             name: skipSlow === 'false' ? ['head', 'debug'] : ['head'],
             ...(skipSlow === 'false' && { include: [{ os: 'ubuntu-24.04', name: 'asan' }] })
           })
-          core.setOutput('build_matrix', build_matrix)
-          const reuse_matrix = JSON.stringify({
+          core.setOutput('build_matrix', buildMatrix)
+          const reuseMatrix = JSON.stringify({
             os: osList,
             name: ['debug'],
             include: [{ os: 'ubuntu-24.04', name: 'asan' }]
           })
-          core.setOutput('reuse_matrix', reuse_matrix)
-          console.log(`build_matrix: ${build_matrix}, reuse_matrix: ${reuse_matrix}`)
+          core.setOutput('reuse_matrix', reuseMatrix)
+          console.log(`build_matrix: ${buildMatrix}, reuse_matrix: ${reuseMatrix}`)
 
   release:
     name: Create GitHub Release
