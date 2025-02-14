@@ -53,30 +53,20 @@ jobs:
       with:
         script: |
           const osList = ['ubuntu-20.04', 'ubuntu-22.04', 'ubuntu-24.04', 'ubuntu-22.04-arm', 'ubuntu-24.04-arm', 'macos-13', 'macos-14']
-          let build_matrix
           const skipSlow = "${{ github.event_name == 'workflow_dispatch' && github.event.inputs.skip_slow == 'true' }}"
-          if (skipSlow === 'false') {
-            build_matrix = JSON.stringify({
-              os: osList,
-              name: ['head', 'debug'],
-              include: [{ os: 'ubuntu-24.04', name: 'asan' }]
-            })
-          } else {
-            build_matrix = JSON.stringify({
-              os: osList,
-              name: ['head']
-            })
-          }
-          let reuse_matrix = JSON.stringify({
+          const buildMatrix = JSON.stringify({
+            os: osList,
+            name: skipSlow === 'false' ? ['head', 'debug'] : ['head'],
+            ...(skipSlow === 'false' && { include: [{ os: 'ubuntu-24.04', name: 'asan' }] })
+          })
+          core.setOutput('build_matrix', build_matrix)
+          const reuse_matrix = JSON.stringify({
             os: osList,
             name: ['debug'],
-            include: [
-              { os: 'ubuntu-24.04', name: 'asan' }
-            ]
+            include: [{ os: 'ubuntu-24.04', name: 'asan' }]
           })
-          console.log(`build_matrix: ${build_matrix}, reuse_matrix: ${reuse_matrix}`)
-          core.setOutput('build_matrix', build_matrix)
           core.setOutput('reuse_matrix', reuse_matrix)
+          console.log(`build_matrix: ${build_matrix}, reuse_matrix: ${reuse_matrix}`)
 
   release:
     name: Create GitHub Release
