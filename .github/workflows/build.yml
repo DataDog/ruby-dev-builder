@@ -45,7 +45,6 @@ jobs:
           const latestReleaseCommit = firstLine.split('@')[1]
           console.log(`Latest release commit: ${latestReleaseCommit}`)
           console.log(`Latest ruby commit: ${latestDevCommit}`)
-
           core.setOutput('should_build', latestReleaseCommit !== latestDevCommit)
           core.setOutput('previous_release', release.tag_name)
     - name: Compute build and reuse matrix
