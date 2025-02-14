@@ -101,6 +101,11 @@ jobs:
           tag=$(basename "${{ github.ref }}")
         fi
         echo "tag=$tag" >> $GITHUB_OUTPUT
+    - name: Set release description to built hash
+      run: echo "ruby/ruby@${{ needs.prepare.outputs.commit }}" >> release-description.md
+    - name: Append note if buils were reused
+      if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.skip_slow == 'true' }}
+      run: echo "Skipped building and reused builds from ${{ needs.prepare.outputs.previous_release }} for debug and asan rubies" >> release-description.md
     - name: Create Release
       env:
         GH_TOKEN: ${{ github.token }}
@@ -108,7 +113,7 @@ jobs:
       run: |
         tag="${{ steps.tag.outputs.tag }}"
         body="ruby/ruby@${{ needs.prepare.outputs.commit }}"
-        gh release create --draft "$tag" --title "$tag" --notes "$body"
+        gh release create --draft "$tag" --title "$tag" --notes-file release-description.md
 
   build:
     needs: [prepare, release]
@@ -270,15 +275,11 @@ jobs:
     needs: [release, build, reuse-slow]
     runs-on: ubuntu-latest
     steps:
-    - name: Reuse slow notice
-      if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.skip_slow == 'true' }}
-      id: notice
-      run: echo "reuse_slow_notice=\\nSkipped building and reused builds from ${{ needs.prepare.outputs.previous_release }} for debug and asan rubies" >> $GITHUB_OUTPUT
     - name: Publish Release
       env:
         GH_TOKEN: ${{ github.token }}
         GH_REPO: ${{ github.repository }}
-      run: gh release edit "${{ needs.release.outputs.tag }}${{ steps.notice.outputs.reuse_slow_notice }}" --draft=false
+      run: gh release edit "${{ needs.release.outputs.tag }}" --draft=false
     - uses: eregon/keep-last-n-releases@v1
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
