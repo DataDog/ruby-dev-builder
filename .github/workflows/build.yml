@@ -31,7 +31,7 @@ jobs:
     - name: Set latest_commit
       id: latest_commit
       working-directory: ruby
-      run: echo "commit=9826047f01230780c0e64072fa03a7a4aecba63c" >> $GITHUB_OUTPUT
+      run: echo "commit=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
 
     - name: Check if latest commit already built
       uses: actions/github-script@v7
